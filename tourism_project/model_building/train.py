@@ -1,112 +1,115 @@
-# for data manipulation
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+import os
+import joblib
+
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import classification_report
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import make_column_transformer
 from sklearn.pipeline import make_pipeline
-# for model training, tuning, and evaluation
 import xgboost as xgb
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import accuracy_score, classification_report, recall_score
-# for model serialization
-import joblib
-# for creating a folder
-import os
-# for hugging face space authentication to upload files
-from huggingface_hub import login, HfApi, create_repo
-from huggingface_hub.utils import RepositoryNotFoundError, HfHubHTTPError
+from huggingface_hub import HfApi, create_repo
+from huggingface_hub.utils import RepositoryNotFoundError
 
-api = HfApi()
+# ----------------------------
+# Load dataset from HF
+# ----------------------------
+Xtrain = pd.read_csv("hf://datasets/Satyanjay/tourism-package-prediction/Xtrain.csv")
+Xtest = pd.read_csv("hf://datasets/Satyanjay/tourism-package-prediction/Xtest.csv")
+ytrain = pd.read_csv("hf://datasets/Satyanjay/tourism-package-prediction/ytrain.csv")
+ytest = pd.read_csv("hf://datasets/Satyanjay/tourism-package-prediction/ytest.csv")
 
-Xtrain_path = "hf://datasets/Satyanjay/tourism-package-prediction/Xtrain.csv"
-Xtest_path = "hf://datasets/Satyanjay/tourism-package-prediction/Xtest.csv"
-ytrain_path = "hf://datasets/Satyanjay/tourism-package-prediction/ytrain.csv"
-ytest_path = "hf://datasets/Satyanjay/tourism-package-prediction/ytest.csv"
+ytrain = ytrain.values.ravel()
+ytest = ytest.values.ravel()
 
-Xtrain = pd.read_csv(Xtrain_path)
-Xtest = pd.read_csv(Xtest_path)
-ytrain = pd.read_csv(ytrain_path)
-ytest = pd.read_csv(ytest_path)
-
-
-# One-hot encode 'Type' and scale numeric features
+# ----------------------------
+# Identify columns
+# ----------------------------
 numeric_features = [
-    'Air temperature',
-    'Process temperature',
-    'Rotational speed',
-    'Torque',
-    'Tool wear'
+    'Age',
+    'CityTier',
+    'DurationOfPitch',
+    'NumberOfPersonVisiting',
+    'NumberOfFollowups',
+    'PreferredPropertyStar',
+    'NumberOfTrips',
+    'Passport',
+    'PitchSatisfactionScore',
+    'OwnCar',
+    'NumberOfChildrenVisiting',
+    'MonthlyIncome'
 ]
-categorical_features = ['Type']
 
+categorical_features = [
+    'TypeofContact',
+    'Occupation',
+    'Gender',
+    'ProductPitched',
+    'MaritalStatus',
+    'Designation'
+]
 
-# Class weight to handle imbalance
-class_weight = ytrain.value_counts()[0] / ytrain.value_counts()[1]
-
-# Preprocessing pipeline
+# ----------------------------
+# Preprocessing
+# ----------------------------
 preprocessor = make_column_transformer(
     (StandardScaler(), numeric_features),
     (OneHotEncoder(handle_unknown='ignore'), categorical_features)
 )
 
-# Define XGBoost model
-xgb_model = xgb.XGBClassifier(scale_pos_weight=class_weight, random_state=42)
+# ----------------------------
+# Model
+# ----------------------------
+model = xgb.XGBClassifier(
+    n_estimators=100,
+    max_depth=3,
+    learning_rate=0.05,
+    random_state=42
+)
 
-# Define hyperparameter grid
-param_grid = {
-    'xgbclassifier__n_estimators': [50, 75, 100],
-    'xgbclassifier__max_depth': [2, 3, 4],
-    'xgbclassifier__colsample_bytree': [0.4, 0.5, 0.6],
-    'xgbclassifier__colsample_bylevel': [0.4, 0.5, 0.6],
-    'xgbclassifier__learning_rate': [0.01, 0.05, 0.1],
-    'xgbclassifier__reg_lambda': [0.4, 0.5, 0.6],
-}
+pipeline = make_pipeline(preprocessor, model)
 
-# Create pipeline
-model_pipeline = make_pipeline(preprocessor, xgb_model)
+# ----------------------------
+# Train
+# ----------------------------
+pipeline.fit(Xtrain, ytrain)
 
-# Grid search with cross-validation
-grid_search = GridSearchCV(model_pipeline, param_grid, cv=5, scoring='recall', n_jobs=-1)
-grid_search.fit(Xtrain, ytrain)
+# ----------------------------
+# Evaluate
+# ----------------------------
+train_pred = pipeline.predict(Xtrain)
+test_pred = pipeline.predict(Xtest)
 
-# Best model
-best_model = grid_search.best_estimator_
-print("Best Params:\n", grid_search.best_params_)
+print("TRAIN REPORT")
+print(classification_report(ytrain, train_pred))
 
-# Predict on training set
-y_pred_train = best_model.predict(Xtrain)
+print("TEST REPORT")
+print(classification_report(ytest, test_pred))
 
-# Predict on test set
-y_pred_test = best_model.predict(Xtest)
+# ----------------------------
+# Save model
+# ----------------------------
+model_path = "tourism_model.joblib"
+joblib.dump(pipeline, model_path)
 
-# Evaluation
-print("\nTraining Classification Report:")
-print(classification_report(ytrain, y_pred_train))
-
-print("\nTest Classification Report:")
-print(classification_report(ytest, y_pred_test))
-
-# Save best model
-joblib.dump(best_model, "best_machine_prediction_model_v1.joblib")
-
-# Upload to Hugging Face
-repo_id = "Satyanjay/tourism_package_prediction_model"
+# ----------------------------
+# Upload to Hugging Face Model Hub
+# ----------------------------
+repo_id = "Satyanjay/tourism-package-prediction-model"
 repo_type = "model"
 
 api = HfApi(token=os.getenv("HF_TOKEN"))
 
-# Step 1: Check if the space exists
 try:
     api.repo_info(repo_id=repo_id, repo_type=repo_type)
-    print(f"Model Space '{repo_id}' already exists. Using it.")
+    print("Model repo exists")
 except RepositoryNotFoundError:
-    print(f"Model Space '{repo_id}' not found. Creating new space...")
     create_repo(repo_id=repo_id, repo_type=repo_type, private=False)
-    print(f"Model Space '{repo_id}' created.")
+    print("Model repo created")
 
-# create_repo("best_machine_failure_model", repo_type="model", private=False)
 api.upload_file(
-    path_or_fileobj="best_machine_prediction_model_v1.joblib",
-    path_in_repo="best_machine_prediction_model_v1.joblib",
+    path_or_fileobj=model_path,
+    path_in_repo=model_path,
     repo_id=repo_id,
     repo_type=repo_type,
 )
