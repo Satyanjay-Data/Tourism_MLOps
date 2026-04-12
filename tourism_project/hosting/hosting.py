@@ -1,10 +1,12 @@
-from huggingface_hub import HfApi
 import os
+from huggingface_hub import HfApi
 
 api = HfApi(token=os.getenv("HF_TOKEN"))
+
+folder_path = "tourism_project/deployment"  # ✅ FIXED PATH
+
 api.upload_folder(
-    folder_path="week_2_mls/deployment",     # the local folder containing your files
-    repo_id="Satyanjay/tourism-package-prediction",          # the target repo
-    repo_type="space",                      # dataset, model, or space
-    path_in_repo="",                          # optional: subfolder path inside the repo
+    folder_path=folder_path,
+    repo_id="Satyanjay/tourism-package-prediction-model",
+    repo_type="model",
 )
