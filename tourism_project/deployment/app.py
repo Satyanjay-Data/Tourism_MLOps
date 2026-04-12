@@ -8,7 +8,7 @@ import joblib
 # =========================
 model_path = hf_hub_download(
     repo_id="Satyanjay/tourism-package-prediction-model",
-    filename="tourism_model.joblib"   # ✅ FIXED
+    filename="tourism_model.joblib"   
 )
 
 model = joblib.load(model_path)
@@ -16,7 +16,7 @@ model = joblib.load(model_path)
 # =========================
 # App UI
 # =========================
-st.title("🌍 Wellness Tourism Package Prediction App")
+st.title("Wellness Tourism Package Prediction App")
 
 st.write("""
 Predict whether a customer will purchase the **Wellness Tourism Package**
