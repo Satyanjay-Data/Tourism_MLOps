@@ -42,14 +42,34 @@ jobs:
         run: python tourism_project/model_building/train.py
 
 
-  deploy-hosting:
+deploy-hosting:
     runs-on: ubuntu-latest
     needs: [model-traning,data-prep,register-dataset]
+
     steps:
-      - uses: actions/checkout@v3
-      - name: Install Dependencies
-        run: pip install -r tourism_project/requirements.txt
-      - name: Push files to Frontend Hugging Face Space
+      - uses: actions/checkout@v4
+
+      - name: Install git
+        run: sudo apt-get install git -y
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+
+      - name: Clone Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: python tourism_project/hosting/hosting.py
+        run: |
+          git clone https://$HF_TOKEN@huggingface.co/spaces/Satyanjay/Tourism-Package-Prediction
+
+      - name: Copy App Files
+        run: |
+          cp -r tourism_project/* Tourism-Package-Prediction/
+
+      - name: Commit and Push to HF Space
+        run: |
+          cd Tourism-Package-Prediction
+          git add .
+          git commit -m "🚀 CI/CD update from GitHub Actions"
+          git push
